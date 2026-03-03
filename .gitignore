@@ -1,0 +1,22 @@
+# Backups generados por el script
+*.backup.*
+
+# Archivos temporales del sistema
+*.tmp
+*.log
+/tmp/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Script viejo (durante refactor)
+setup_old.sh
