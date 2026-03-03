@@ -69,6 +69,9 @@ fi
 
 [ -f ~/.bash_aliases ] && . ~/.bash_aliases
 
+# ── Alias para cambiar de shell ──
+alias set-zsh='chsh -s $(which zsh) && echo "Zsh seteado — cerrá sesión para activarlo"'
+
 if [ -f /usr/share/bash-completion/bash_completion ]; then
   . /usr/share/bash-completion/bash_completion
 elif [ -f /etc/bash_completion ]; then
@@ -258,6 +261,9 @@ if [ -x /usr/bin/dircolors ]; then
 fi
 
 [ -f ~/.zsh_aliases ] && source ~/.zsh_aliases
+
+# ── Alias para cambiar de shell ──
+alias set-bash='chsh -s $(which bash) && echo "Bash seteado — cerrá sesión para activarlo"'
 
 STATIC_EOF
 
