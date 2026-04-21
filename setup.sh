@@ -107,7 +107,7 @@ echo ""
 # ·· Shell ·····················································
 echo -e "  ${BOLD}1. ¿Qué shell preferís?${NC}"
 echo ""
-echo -e "     ${BOLD}[1]${NC}  Bash  ${DIM}— tuneado con prompt Nord, info git/venv${NC}"
+echo -e "     ${BOLD}[1]${NC}  Bash  ${DIM}— tuneado con prompt, info git/venv${NC}"
 echo -e "     ${BOLD}[2]${NC}  Zsh   ${DIM}— Oh My Zsh + autosuggestions + syntax highlighting${NC}"
 echo ""
 
@@ -147,17 +147,51 @@ while true; do
 done
 export THEME_CHOICE
 
+# ·· Node Version Manager ·······································
+echo ""
+separator
+echo ""
+echo -e "  ${BOLD}3. ¿Qué manager de versiones de Node.js querés usar?${NC}"
+echo ""
+echo -e "     ${BOLD}[1]${NC}  NVM  ${DIM}— Node Version Manager. El estándar histórico, ampliamente documentado.${NC}"
+echo -e "     ${BOLD}[2]${NC}  FNM  ${DIM}— Fast Node Manager. Escrito en Rust, más rápido, compatible con .nvmrc.${NC}"
+echo ""
+
+# Detectar instalaciones existentes y avisar
+_NVM_INSTALLED=false
+_FNM_INSTALLED=false
+[ -d "$HOME/.nvm" ]             && _NVM_INSTALLED=true
+command -v fnm &>/dev/null      && _FNM_INSTALLED=true
+
+if [[ "$_NVM_INSTALLED" == true ]]; then
+  echo -e "  ${YELLOW}⚠  NVM detectado en ${HOME}/.nvm${NC}"
+fi
+if [[ "$_FNM_INSTALLED" == true ]]; then
+  echo -e "  ${YELLOW}⚠  FNM detectado en PATH ($(command -v fnm))${NC}"
+fi
+[[ "$_NVM_INSTALLED" == true || "$_FNM_INSTALLED" == true ]] && echo ""
+
+NODE_MANAGER_CHOICE=""
+while true; do
+  read -rp "  Elegí una opción [1/2]: " _NM
+  case "$_NM" in
+    1) NODE_MANAGER_CHOICE="nvm"; break ;;
+    2) NODE_MANAGER_CHOICE="fnm"; break ;;
+    *) warn "Ingresá 1 (NVM) o 2 (FNM)." ;;
+  esac
+done
+export NODE_MANAGER_CHOICE
+
 # ·· Git config ·················································
 echo ""
 separator
 echo ""
-echo -e "  ${BOLD}3. Configuración de Git${NC}"
+echo -e "  ${BOLD}4. Configuración de Git${NC}"
 echo ""
 
 GIT_NAME=""
 GIT_EMAIL=""
 
-# Leer valores actuales si ya existen
 _CURRENT_GIT_NAME=$(git config --global user.name  2>/dev/null || echo "")
 _CURRENT_GIT_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
 
@@ -183,7 +217,6 @@ if [[ "${_ASK_GIT:-false}" == true ]]; then
   read -rp "  Nombre para Git (ej: Juan Pérez): " GIT_NAME
   read -rp "  Email para Git  (ej: juan@mail.com): " GIT_EMAIL
 
-  # Validación básica
   [[ -n "$GIT_NAME"  ]] || error "El nombre de Git no puede estar vacío."
   [[ "$GIT_EMAIL" == *@*.* ]] || error "El email '$GIT_EMAIL' no parece válido."
 fi
@@ -196,11 +229,12 @@ separator
 echo ""
 echo -e "  ${BOLD}Configuración seleccionada:${NC}"
 echo ""
-echo -e "  ${GREEN}✔${NC}  Shell:   ${BOLD}${SHELL_CHOICE}${NC}"
-echo -e "  ${GREEN}✔${NC}  Tema:    ${BOLD}${THEME_CHOICE}${NC}"
-echo -e "  ${GREEN}✔${NC}  Git:     ${BOLD}${GIT_NAME}${NC} <${GIT_EMAIL}>"
-[[ "$MINIMAL"  == true ]] && echo -e "  ${GREEN}✔${NC}  Modo:    ${BOLD}minimal${NC} (sin VSCode, Brave ni fuentes)"
-[[ "$DRY_RUN"  == true ]] && echo -e "  ${GREEN}✔${NC}  Modo:    ${BOLD}dry-run${NC} (simulación)"
+echo -e "  ${GREEN}✔${NC}  Shell:          ${BOLD}${SHELL_CHOICE}${NC}"
+echo -e "  ${GREEN}✔${NC}  Tema:           ${BOLD}${THEME_CHOICE}${NC}"
+echo -e "  ${GREEN}✔${NC}  Node manager:   ${BOLD}${NODE_MANAGER_CHOICE^^}${NC}"
+echo -e "  ${GREEN}✔${NC}  Git:            ${BOLD}${GIT_NAME}${NC} <${GIT_EMAIL}>"
+[[ "$MINIMAL"  == true ]] && echo -e "  ${GREEN}✔${NC}  Modo:           ${BOLD}minimal${NC} (sin VSCode, Brave ni fuentes)"
+[[ "$DRY_RUN"  == true ]] && echo -e "  ${GREEN}✔${NC}  Modo:           ${BOLD}dry-run${NC} (simulación)"
 echo ""
 
 if ! confirm "¿Querés continuar con la instalación?"; then
@@ -217,13 +251,13 @@ if [[ "$MINIMAL" != true ]]; then
   module_brave
 fi
 
-module_node
+module_node   # Usa NODE_MANAGER_CHOICE internamente
 
 if [[ "$MINIMAL" != true ]]; then
   module_fonts
 fi
 
-module_shell   # Siempre: configura el shell y el tema elegido
+module_shell  # Usa NODE_MANAGER_CHOICE para escribir el bloque correcto en el rc file
 
 # ── Configurar Git ────────────────────────────────────────────
 step "Configurando Git..."
@@ -234,8 +268,6 @@ run "git config --global init.defaultBranch main"
 run "git config --global core.autocrlf input"
 run "git config --global pull.rebase false"
 
-# Crear ~/.gitconfig si no existe (el comando anterior ya lo crea,
-# pero dejamos este bloque explícito para dry-run clarity)
 if [[ "$DRY_RUN" != true ]]; then
   ok "Git configurado: ${GIT_NAME} <${GIT_EMAIL}>"
   ok "Branch por defecto: main"
@@ -256,6 +288,21 @@ if [[ "$MINIMAL" != true ]]; then
   echo -e "  ${GREEN}✔${NC}  Brave            $(brave-browser --version 2>/dev/null | head -1 || echo 'instalado')"
   echo -e "  ${GREEN}✔${NC}  Cascadia Code    ${CASCADIA_VERSION:-'(sin cambios)'}"
 fi
+
+# Mostrar versión del node manager activo
+case "$NODE_MANAGER_CHOICE" in
+  fnm)
+    FNM_VER=$(fnm --version 2>/dev/null || echo "instalado")
+    echo -e "  ${GREEN}✔${NC}  FNM              ${FNM_VER}"
+    ;;
+  nvm)
+    # NVM no es un binario, leer versión del archivo de release si existe
+    NVM_VER=$(cat "$HOME/.nvm/package.json" 2>/dev/null \
+              | grep '"version"' | head -1 | cut -d'"' -f4 \
+              || echo "instalado")
+    echo -e "  ${GREEN}✔${NC}  NVM              ${NVM_VER}"
+    ;;
+esac
 
 echo -e "  ${GREEN}✔${NC}  Node / npm       $(node --version 2>/dev/null) / $(npm --version 2>/dev/null)${NODE_SELECTED_VERSION:+ — default: $NODE_SELECTED_VERSION}"
 echo -e "  ${GREEN}✔${NC}  Shell            ${SHELL_CHOICE} · tema ${THEME_CHOICE}"

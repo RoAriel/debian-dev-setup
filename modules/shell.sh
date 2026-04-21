@@ -5,9 +5,10 @@
 # aplicando el tema de colores seleccionado.
 #
 # Variables requeridas del orquestador:
-#   SHELL_CHOICE  — "bash" o "zsh"
-#   THEME_CHOICE  — "nord" | "dracula" | "gruvbox" | "catppuccin"
-#   SETUP_DIR     — ruta absoluta al directorio raíz del proyecto
+#   SHELL_CHOICE         — "bash" o "zsh"
+#   THEME_CHOICE         — "nord" | "dracula" | "gruvbox" | "catppuccin"
+#   NODE_MANAGER_CHOICE  — "nvm" | "fnm"
+#   SETUP_DIR            — ruta absoluta al directorio raíz del proyecto
 # ============================================================
 
 [[ -n "${_SHELL_LOADED:-}" ]] && return 0
@@ -22,6 +23,56 @@ _load_theme() {
   source "$THEME_FILE"
 }
 
+# ── Helper: bloque de node manager para Bash ─────────────────
+# Devuelve el bloque correcto según NODE_MANAGER_CHOICE.
+# Se llama ANTES del heredoc y se captura en una variable local
+# para poder expandirla dentro del heredoc con comillas dobles.
+_node_manager_block_bash() {
+  if [[ "${NODE_MANAGER_CHOICE:-nvm}" == "fnm" ]]; then
+    cat << 'EOF'
+# ==============================
+# 📦 FNM (Fast Node Manager)
+# ==============================
+export PATH="$HOME/.local/bin:$PATH"
+if command -v fnm &>/dev/null; then
+  eval "$(fnm env --use-on-cd)"
+fi
+EOF
+  else
+    cat << 'EOF'
+# ==============================
+# 📦 NVM (Node Version Manager)
+# ==============================
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ]          && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+EOF
+  fi
+}
+
+# ── Helper: bloque de node manager para Zsh ──────────────────
+# Mismo concepto pero se escribe con printf >> al .zshrc
+# (fuera del heredoc single-quote para poder expandir la variable)
+_write_node_manager_block_zsh() {
+  local ZSHRC="$1"
+  printf '# ==============================\n' >> "$ZSHRC"
+
+  if [[ "${NODE_MANAGER_CHOICE:-nvm}" == "fnm" ]]; then
+    printf '# 📦 FNM (Fast Node Manager)\n'       >> "$ZSHRC"
+    printf '# ==============================\n'    >> "$ZSHRC"
+    printf 'export PATH="$HOME/.local/bin:$PATH"\n' >> "$ZSHRC"
+    printf 'if command -v fnm &>/dev/null; then\n' >> "$ZSHRC"
+    printf '  eval "$(fnm env --use-on-cd)"\n'    >> "$ZSHRC"
+    printf 'fi\n'                                  >> "$ZSHRC"
+  else
+    printf '# 📦 NVM (Node Version Manager)\n'    >> "$ZSHRC"
+    printf '# ==============================\n'    >> "$ZSHRC"
+    printf 'export NVM_DIR="$HOME/.nvm"\n'         >> "$ZSHRC"
+    printf '[ -s "$NVM_DIR/nvm.sh" ]          && \. "$NVM_DIR/nvm.sh"\n'          >> "$ZSHRC"
+    printf '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"\n' >> "$ZSHRC"
+  fi
+}
+
 # ── Configurar Bash ───────────────────────────────────────────
 _setup_bash() {
   step "Configurando Bash + tema ${THEME_NAME}..."
@@ -31,17 +82,20 @@ _setup_bash() {
 
   if [[ "$DRY_RUN" == true ]]; then
     dry_log "cp $BASHRC $BACKUP"
-    dry_log "Escribir ~/.bashrc con tema ${THEME_NAME}"
+    dry_log "Escribir ~/.bashrc con tema ${THEME_NAME} + ${NODE_MANAGER_CHOICE^^}"
     return 0
   fi
 
   [[ -f "$BASHRC" ]] && cp "$BASHRC" "$BACKUP" && warn "Backup guardado: $BACKUP"
 
   # Capturar colores del tema en variables locales
-  # para que se expandan correctamente dentro del heredoc
   local T_USER="$THEME_USER" T_ROOT="$THEME_ROOT" T_PATH="$THEME_PATH"
   local T_GIT="$THEME_GIT"   T_OK="$THEME_OK"     T_ERR="$THEME_ERROR"
   local T_VENV="$THEME_VENV" T_NAME="$THEME_NAME"
+
+  # Capturar el bloque del node manager ANTES del heredoc
+  local NODE_MGR_BLOCK
+  NODE_MGR_BLOCK="$(_node_manager_block_bash)"
 
   cat > "$BASHRC" << BASHRC_EOF
 # ==============================
@@ -135,15 +189,10 @@ build_prompt() {
 
 PROMPT_COMMAND=build_prompt
 
-# ==============================
-# 📦 NVM
-# ==============================
-export NVM_DIR="\$HOME/.nvm"
-[ -s "\$NVM_DIR/nvm.sh" ]          && \. "\$NVM_DIR/nvm.sh"
-[ -s "\$NVM_DIR/bash_completion" ] && \. "\$NVM_DIR/bash_completion"
+${NODE_MGR_BLOCK}
 BASHRC_EOF
 
-  ok "~/.bashrc configurado con tema ${THEME_NAME}"
+  ok "~/.bashrc configurado con tema ${THEME_NAME} + ${NODE_MANAGER_CHOICE^^}"
 }
 
 # ── Configurar Zsh + Oh My Zsh ────────────────────────────────
@@ -162,7 +211,7 @@ _setup_zsh() {
     dry_log "Instalar Oh My Zsh en ~/.oh-my-zsh"
     dry_log "Instalar plugin: zsh-autosuggestions"
     dry_log "Instalar plugin: zsh-syntax-highlighting"
-    dry_log "Escribir ~/.zshrc con tema ${THEME_NAME}"
+    dry_log "Escribir ~/.zshrc con tema ${THEME_NAME} + ${NODE_MANAGER_CHOICE^^}"
     dry_log "chsh -s \$(which zsh)"
     return 0
   fi
@@ -206,9 +255,6 @@ _setup_zsh() {
   local BACKUP="${ZSHRC}.backup.$(date +%Y%m%d_%H%M%S)"
   [[ -f "$ZSHRC" ]] && cp "$ZSHRC" "$BACKUP" && warn "Backup guardado: $BACKUP"
 
-  # Los colores en THEME_* son strings como "\e[1;38;2;136;192;208m"
-  # Para que Zsh los interprete como ESC real, los convertimos con printf
-  # y los embebemos directamente en el .zshrc como bytes literales.
   local C_USER C_ROOT C_PATH C_GIT C_OK C_ERR C_VENV C_RESET
   C_USER=$(printf '%b' "$THEME_USER")
   C_ROOT=$(printf '%b' "$THEME_ROOT")
@@ -218,10 +264,6 @@ _setup_zsh() {
   C_ERR=$(printf '%b'  "$THEME_ERROR")
   C_VENV=$(printf '%b' "$THEME_VENV")
   C_RESET=$(printf '\e[0m')
-
-  # Escribir el .zshrc usando printf para preservar los bytes ESC reales
-  # Secciones sin color usan heredoc normal (más legible)
-  # La sección del prompt usa printf con las variables expandidas
 
   # ── Parte 1: OMZ, basics (sin colores) ──
   cat > "$ZSHRC" << 'STATIC_EOF'
@@ -268,13 +310,11 @@ alias set-bash='chsh -s $(which bash) && echo "Bash seteado — cerrá sesión p
 STATIC_EOF
 
   # ── Parte 2: variables del tema con bytes ESC reales ──
-  # Se escriben con printf >> para que los ESC queden como bytes en el archivo
   printf '# ==============================\n' >> "$ZSHRC"
   printf '# 🎨 PROMPT — Tema: %s\n'  "$THEME_NAME" >> "$ZSHRC"
   printf '# ==============================\n' >> "$ZSHRC"
   printf 'autoload -Uz add-zsh-hook\n\n' >> "$ZSHRC"
 
-  # Escribir cada variable con el byte ESC real embebido
   printf 'THEME_USER="%b"\n'  "$THEME_USER"  >> "$ZSHRC"
   printf 'THEME_ROOT="%b"\n'  "$THEME_ROOT"  >> "$ZSHRC"
   printf 'THEME_PATH="%b"\n'  "$THEME_PATH"  >> "$ZSHRC"
@@ -284,7 +324,7 @@ STATIC_EOF
   printf 'THEME_VENV="%b"\n'  "$THEME_VENV"  >> "$ZSHRC"
   printf '\n' >> "$ZSHRC"
 
-  # ── Parte 3: función del prompt y NVM (sin colores) ──
+  # ── Parte 3: función del prompt (sin colores, single-quote heredoc) ──
   cat >> "$ZSHRC" << 'PROMPT_EOF'
 # _c: envuelve un color en %{ %} para que Zsh no lo cuente como ancho visible
 _c() { printf '%%{%s%%}' "$1"; }
@@ -335,18 +375,15 @@ ${SYMBOL} "
 
 add-zsh-hook precmd _build_prompt
 
-# ==============================
-# 📦 NVM
-# ==============================
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ]          && \. "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 PROMPT_EOF
+
+  # ── Parte 4: bloque del node manager (fuera del heredoc single-quote) ──
+  _write_node_manager_block_zsh "$ZSHRC"
 
   # Setear Zsh como shell default
   echo "  Seteando Zsh como shell predeterminado..."
   run "chsh -s \$(which zsh)"
-  ok "~/.zshrc configurado con tema ${THEME_NAME}"
+  ok "~/.zshrc configurado con tema ${THEME_NAME} + ${NODE_MANAGER_CHOICE^^}"
   warn "Cerrá sesión y volvé a entrar para activar Zsh como shell default"
 }
 
